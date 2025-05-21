@@ -22,3 +22,4 @@ if(WIN32)
 endif()
 
 add_subdirectory(hw1)
+add_subdirectory(hw2)
