@@ -3,6 +3,10 @@
 
 // ==========이 파일은 수정 가능==========
 
+#include <cstddef>
+
+#define CONFIG_BLOCK_LEN 64
+
 #define CONFIG_MALLOC_ALIGNED y
 #define CONFIG_MALLOC_ALIGNED_SIZE 16
 
@@ -34,6 +38,8 @@ typedef struct node_t {
     Item item;
     struct node_t* next;
     // 필드 추가 가능
+    void *block_root;
+    std::size_t block_idx;
 } Node;
 
 typedef struct {

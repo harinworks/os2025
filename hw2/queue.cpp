@@ -140,18 +140,32 @@ Reply enqueue(Queue* queue, Item item) {
 	if (queue == nullptr)
 		return reply;
 
-	auto new_node = nalloc(item);
-
-	if (new_node == nullptr)
-		return reply;
-
 	internal_lock(queue);
+
+	auto node = queue->tail;
+
+	auto block_idx = node != nullptr && node->block_idx < CONFIG_BLOCK_LEN - 1
+		? node->block_idx + 1
+		: 0;
+
+	auto block_root =
+		block_idx > 0
+		? node->block_root
+		: internal_malloc(sizeof(Node) * CONFIG_BLOCK_LEN, CONFIG_MALLOC_ALIGNED_SIZE);
+
+	if (block_root == nullptr) {
+		internal_unlock(queue);
+		return reply;
+	}
+
+	auto new_node = &reinterpret_cast<Node*>(block_root)[block_idx];
+	*new_node = { .item = item, .next = nullptr, .block_root = block_root, .block_idx = block_idx };
 
 	if (queue->head == nullptr) {
 		queue->head = new_node;
 		queue->tail = new_node;
 	} else {
-		queue->tail->next = new_node;
+		node->next = new_node;
 		queue->tail = new_node;
 	}
 
@@ -183,8 +197,10 @@ Reply dequeue(Queue* queue) {
 	if (queue->head == nullptr)
 		queue->tail = nullptr;
 
+	if (node->block_root != nullptr && (node->next == nullptr || node->next->block_root != node->block_root))
+		internal_free(node->block_root);
+
 	internal_unlock(queue);
-	nfree(node);
 
 	reply.success = true;
 
