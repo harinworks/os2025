@@ -3,6 +3,16 @@
 
 // ==========이 파일은 수정 가능==========
 
+// #define CONFIG_MUTEX_USE_STL y
+// #define CONFIG_MUTEX_USE_PTHREAD y
+#define CONFIG_MUTEX_USE_SPINLOCK y
+
+#if defined(CONFIG_MUTEX_USE_STL)
+#include <mutex>
+#elif defined(CONFIG_MUTEX_USE_PTHREAD)
+#include <pthread.h>
+#endif
+
 typedef unsigned int Key;  // 값이 클수록 높은 우선순위
 typedef void* Value;
 
@@ -26,6 +36,13 @@ typedef struct node_t {
 typedef struct {
     Node* head, * tail;
     // 필드 추가 가능
+#if defined(CONFIG_MUTEX_USE_STL)
+    std::mutex mutex;
+#elif defined(CONFIG_MUTEX_USE_PTHREAD)
+    pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#elif defined(CONFIG_MUTEX_USE_SPINLOCK)
+    volatile void* lock = nullptr;
+#endif
 } Queue;
 
 // 이후 자유롭게 추가/수정: 새로운 자료형 정의 등
