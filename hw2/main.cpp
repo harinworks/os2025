@@ -1,6 +1,7 @@
 #include <iostream>
 #include <thread>
 #include <atomic>
+#include <stdint.h>
 #include "queue.h"
 
 using namespace std;
@@ -42,7 +43,8 @@ void client_func(Queue* queue, Request requests[], int n_request) {
 		if (reply.success) {
 			// 단순히 리턴받은 키 값을 더함(아무 의미 없음)
 			sum_key += reply.item.key;
-			sum_value += (int)reply.item.value; // void*에서 다시 int로 변환
+			// sum_value += (int)reply.item.value; // void*에서 다시 int로 변환
+			sum_value += reinterpret_cast<long>(reply.item.value);
 
 			// 리턴받은 key, value 값 검증
 			// ...생략...
@@ -62,14 +64,16 @@ void client_func(Queue* queue, Request requests[], int n_request) {
 }
 
 int main(void) {
-	srand((unsigned int)time(NULL));
+	// srand((unsigned int)time(NULL));
+	srand(static_cast<unsigned>(time(nullptr)));
 
 	// 워크로드 생성(GETRANGE는 패스)
 	Request requests[REQUEST_PER_CLINET];
 	for (int i = 0; i < REQUEST_PER_CLINET / 2; i++) {
 		requests[i].op = SET;
 		requests[i].item.key = i;
-		requests[i].item.value = (void*)(rand() % 1000000);
+		// requests[i].item.value = (void*)(rand() % 1000000);
+		requests[i].item.value = reinterpret_cast<void*>(rand() % 1000000);
 	}
 	for (int i = REQUEST_PER_CLINET / 2; i < REQUEST_PER_CLINET; i++) {
 		requests[i].op = GET;
