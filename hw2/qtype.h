@@ -3,6 +3,9 @@
 
 // ==========이 파일은 수정 가능==========
 
+#define CONFIG_MALLOC_ALIGNED y
+#define CONFIG_MALLOC_ALIGNED_SIZE 16
+
 // #define CONFIG_MUTEX_USE_STL y
 // #define CONFIG_MUTEX_USE_PTHREAD y
 #define CONFIG_MUTEX_USE_SPINLOCK y

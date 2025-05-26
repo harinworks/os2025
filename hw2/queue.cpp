@@ -2,6 +2,39 @@
 #include <cstdlib>
 #include "queue.h"
 
+#if defined(CONFIG_MALLOC_ALIGNED)
+#ifdef _WIN32
+inline void* internal_malloc(std::size_t size, std::size_t alignment) {
+	return _aligned_malloc(size, alignment);
+}
+
+inline void internal_free(void* ptr) {
+	_aligned_free(ptr);
+}
+#else
+inline void* internal_malloc(std::size_t size, std::size_t alignment) {
+	void* ptr;
+
+	if (posix_memalign(&ptr, alignment, size) == -1)
+		return nullptr;
+
+	return ptr;
+}
+
+inline void internal_free(void* ptr) {
+	free(ptr);
+}
+#endif
+#else
+inline void* internal_malloc(std::size_t size, std::size_t alignment) {
+	return std::malloc(size);
+}
+
+inline void internal_free(void* ptr) {
+	std::free(ptr);
+}
+#endif
+
 #if defined(CONFIG_MUTEX_USE_STL)
 #include <mutex>
 
@@ -76,7 +109,7 @@ void release(Queue* queue) {
 }
 
 Node* nalloc(Item item) {
-	auto node = reinterpret_cast<Node*>(std::malloc(sizeof(Node)));
+	auto node = reinterpret_cast<Node*>(internal_malloc(sizeof(Node), CONFIG_MALLOC_ALIGNED_SIZE));
 	*node = { .item = item, .next = nullptr };
 
 	return node;
@@ -84,7 +117,7 @@ Node* nalloc(Item item) {
 
 void nfree(Node* node) {
 	if (node != nullptr)
-		std::free(node);
+		internal_free(node);
 }
 
 Node* nclone(Node* node) {
