@@ -3,20 +3,51 @@
 #include "queue.h"
 
 #if defined(CONFIG_MALLOC_ALIGNED)
+// https://android.googlesource.com/platform/bionic/+/master/libc/include/sys/cdefs.h
+
+#ifndef __BIONIC_ALIGN
+#define __BIONIC_ALIGN(__value, __alignment) (((__value) + (__alignment) - 1) & ~((__alignment) - 1))
+#endif
+
+#if defined(__i386__)
+#define PAGE_SIZE 4096
+#define CACHE_SIZE 32
+#elif defined(__x86_64__)
+#define PAGE_SIZE 4096
+#define CACHE_SIZE 64
+#else
+#define PAGE_SIZE 1
+#define CACHE_SIZE 1
+#endif
+
 #ifdef _WIN32
-inline void* internal_malloc(std::size_t size, std::size_t alignment) {
-	return _aligned_malloc(size, alignment);
+inline void* internal_malloc(std::size_t size) {
+	if (size >= PAGE_SIZE)
+        return _aligned_malloc(__BIONIC_ALIGN(size, PAGE_SIZE), PAGE_SIZE);
+
+	return _aligned_malloc(size, CACHE_SIZE);
 }
 
 inline void internal_free(void* ptr) {
 	_aligned_free(ptr);
 }
 #else
-inline void* internal_malloc(std::size_t size, std::size_t alignment) {
+#include <sys/mman.h>
+
+inline void* internal_malloc(std::size_t size) {
 	void* ptr;
 
-	if (posix_memalign(&ptr, alignment, size) == -1)
-		return nullptr;
+	if (size >= PAGE_SIZE) {
+        size = __BIONIC_ALIGN(size, PAGE_SIZE);
+
+        if (posix_memalign(&ptr, PAGE_SIZE, size) == -1)
+			return nullptr;
+
+        madvise(ptr, PAGE_SIZE, MADV_WILLNEED);
+        madvise(ptr, PAGE_SIZE, MADV_HUGEPAGE);
+    } else if (posix_memalign(&ptr, CACHE_SIZE, size) == -1) {
+        return nullptr;
+    }
 
 	return ptr;
 }
@@ -26,7 +57,7 @@ inline void internal_free(void* ptr) {
 }
 #endif
 #else
-inline void* internal_malloc(std::size_t size, std::size_t alignment) {
+inline void* internal_malloc(std::size_t size) {
 	return std::malloc(size);
 }
 
@@ -109,7 +140,7 @@ void release(Queue* queue) {
 }
 
 Node* nalloc(Item item) {
-	auto node = reinterpret_cast<Node*>(internal_malloc(sizeof(Node), CONFIG_MALLOC_ALIGNED_SIZE));
+	auto node = reinterpret_cast<Node*>(internal_malloc(sizeof(Node)));
 	*node = { .item = item, .next = nullptr };
 
 	return node;
@@ -151,7 +182,7 @@ Reply enqueue(Queue* queue, Item item) {
 	auto block_root =
 		block_idx > 0
 		? node->block_root
-		: internal_malloc(sizeof(Node) * CONFIG_BLOCK_LEN, CONFIG_MALLOC_ALIGNED_SIZE);
+		: internal_malloc(sizeof(Node) * CONFIG_BLOCK_LEN);
 
 	if (block_root == nullptr) {
 		internal_unlock(queue);
