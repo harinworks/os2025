@@ -90,6 +90,27 @@ inline void internal_unlock(Queue* queue) {
 // https://wiki.osdev.org/Spinlock
 
 #if defined(__i386__) || defined(__x86_64__)
+#ifdef _WIN32
+inline void internal_lock(Queue* queue) {
+    __asm {
+    lock:
+        lock bts dword ptr [queue->lock], 0
+        jnc exit
+    spin:
+        pause
+        test dword ptr [queue->lock], 1
+        jnz spin
+        jmp lock
+    exit:
+    }
+}
+
+inline void internal_unlock(Queue* queue) {
+    __asm {
+        mov dword ptr [queue->lock], 0
+    }
+}
+#else
 inline void internal_lock(Queue* queue) {
 	__asm__ __volatile__ (
         "1:\n"
@@ -115,6 +136,7 @@ inline void internal_unlock(Queue* queue) {
 		: "memory"
 	);
 }
+#endif
 #else
 inline void internal_lock(Queue* queue) {
 	while (&queue->lock != 0);
