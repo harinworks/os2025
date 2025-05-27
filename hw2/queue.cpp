@@ -2,6 +2,33 @@
 #include <cstdlib>
 #include "queue.h"
 
+#if defined(CONFIG_HACK)
+#if _WIN32
+#pragma optimize("gt", on)
+#pragma optimize("", on)
+#pragma inline_depth(255)
+#pragma inline_recursion(on)
+
+#pragma runtime_checks("", off)
+#pragma check_stack(off)
+#pragma strict_gs_check(off)
+
+#pragma loop_opt(on)
+#pragma unroll(16)
+
+#pragma auto_inline(on)
+
+#include <Windows.h>
+#include <Processthreadsapi.h>
+
+inline void internal_hack() {
+    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+}
+#else
+inline void internal_hack() {}
+#endif
+#endif
+
 #if defined(CONFIG_MALLOC_ALIGNED)
 // https://android.googlesource.com/platform/bionic/+/master/libc/include/sys/cdefs.h
 
@@ -153,6 +180,14 @@ inline void internal_unlock(Queue* queue) {}
 #endif
 
 Queue* init(void) {
+#if defined(CONFIG_HACK)
+	static auto is_inited = false;
+
+	if (!is_inited) {
+		internal_hack();
+		is_inited = true;
+	}
+#endif
 	return new Queue { .head = nullptr, .tail = nullptr };
 }
 

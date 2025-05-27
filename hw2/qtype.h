@@ -5,6 +5,8 @@
 
 #include <cstddef>
 
+#define CONFIG_HACK y
+
 #define CONFIG_BLOCK_LEN 64
 #define CONFIG_MALLOC_ALIGNED y
 
