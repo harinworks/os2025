@@ -21,11 +21,11 @@
 #include <Windows.h>
 #include <Processthreadsapi.h>
 
-inline void internal_hack() {
+static QUEUE_INLINE void internal_hack() {
     SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 }
 #else
-inline void internal_hack() {}
+static QUEUE_INLINE void internal_hack() {}
 #endif
 #endif
 
@@ -36,32 +36,21 @@ inline void internal_hack() {}
 #define __BIONIC_ALIGN(__value, __alignment) (((__value) + (__alignment) - 1) & ~((__alignment) - 1))
 #endif
 
-#if defined(__i386__)
-#define PAGE_SIZE 4096
-#define CACHE_SIZE 32
-#elif defined(__x86_64__)
-#define PAGE_SIZE 4096
-#define CACHE_SIZE 64
-#else
-#define PAGE_SIZE 1
-#define CACHE_SIZE 1
-#endif
-
 #ifdef _WIN32
-inline void* internal_malloc(std::size_t size) {
+static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	if (size >= PAGE_SIZE)
         return _aligned_malloc(__BIONIC_ALIGN(size, PAGE_SIZE), PAGE_SIZE);
 
 	return _aligned_malloc(size, CACHE_SIZE);
 }
 
-inline void internal_free(void* ptr) {
+static QUEUE_INLINE void internal_free(void* ptr) {
 	_aligned_free(ptr);
 }
 #else
 #include <sys/mman.h>
 
-inline void* internal_malloc(std::size_t size) {
+static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	void* ptr;
 
 	if (size >= PAGE_SIZE) {
@@ -79,16 +68,16 @@ inline void* internal_malloc(std::size_t size) {
 	return ptr;
 }
 
-inline void internal_free(void* ptr) {
+static QUEUE_INLINE void internal_free(void* ptr) {
 	free(ptr);
 }
 #endif
 #else
-inline void* internal_malloc(std::size_t size) {
+static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	return std::malloc(size);
 }
 
-inline void internal_free(void* ptr) {
+static QUEUE_INLINE void internal_free(void* ptr) {
 	std::free(ptr);
 }
 #endif
@@ -96,21 +85,21 @@ inline void internal_free(void* ptr) {
 #if defined(CONFIG_MUTEX_USE_STL)
 #include <mutex>
 
-inline void internal_lock(Queue* queue) {
+static QUEUE_INLINE void internal_lock(Queue* queue) {
 	queue->mutex.lock();
 }
 
-inline void internal_unlock(Queue* queue) {
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
 	queue->mutex.unlock();
 }
 #elif defined(CONFIG_MUTEX_USE_PTHREAD)
 #include <pthread.h>
 
-inline void internal_lock(Queue* queue) {
+static QUEUE_INLINE void internal_lock(Queue* queue) {
 	pthread_mutex_lock(&queue->mutex);
 }
 
-inline void internal_unlock(Queue* queue) {
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
 	pthread_mutex_unlock(&queue->mutex);
 }
 #elif defined(CONFIG_MUTEX_USE_SPINLOCK)
@@ -118,7 +107,7 @@ inline void internal_unlock(Queue* queue) {
 
 #if defined(__i386__) || defined(__x86_64__)
 #ifdef _WIN32
-inline void internal_lock(Queue* queue) {
+static QUEUE_INLINE void internal_lock(Queue* queue) {
     __asm {
     lock:
         lock bts dword ptr [queue->lock], 0
@@ -132,13 +121,13 @@ inline void internal_lock(Queue* queue) {
     }
 }
 
-inline void internal_unlock(Queue* queue) {
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
     __asm {
         mov dword ptr [queue->lock], 0
     }
 }
 #else
-inline void internal_lock(Queue* queue) {
+static QUEUE_INLINE void internal_lock(Queue* queue) {
 	__asm__ __volatile__ (
         "1:\n"
         "   lock btsl $0, %0\n"
@@ -155,7 +144,7 @@ inline void internal_lock(Queue* queue) {
     );
 }
 
-inline void internal_unlock(Queue* queue) {
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
 	__asm__ __volatile__(
 		"movl $0, %0\n"
 		: "=m"(queue->lock)
@@ -165,18 +154,18 @@ inline void internal_unlock(Queue* queue) {
 }
 #endif
 #else
-inline void internal_lock(Queue* queue) {
+static QUEUE_INLINE void internal_lock(Queue* queue) {
 	while (&queue->lock != 0);
 	queue->lock = 1;
 }
 
-inline void internal_unlock(Queue* queue) {
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
 	queue->lock = 0;
 }
 #endif
 #else
-inline void internal_lock(Queue* queue) {}
-inline void internal_unlock(Queue* queue) {}
+static QUEUE_INLINE void internal_lock(Queue* queue) {}
+static QUEUE_INLINE void internal_unlock(Queue* queue) {}
 #endif
 
 Queue* init(void) {

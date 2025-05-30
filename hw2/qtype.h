@@ -14,6 +14,25 @@
 // #define CONFIG_MUTEX_USE_PTHREAD y
 #define CONFIG_MUTEX_USE_SPINLOCK y
 
+#if defined(__i386__)
+#define PAGE_SIZE 4096
+#define CACHE_SIZE 32
+#elif defined(__x86_64__)
+#define PAGE_SIZE 4096
+#define CACHE_SIZE 64
+#else
+#define PAGE_SIZE 1
+#define CACHE_SIZE 1
+#endif
+
+#ifdef _WIN32
+#define QUEUE_INLINE __forceinline
+#define QUEUE_ALIGN(alignment) __declspec(align(alignment))
+#else
+#define QUEUE_INLINE __attribute__((always_inline)) inline
+#define QUEUE_ALIGN(alignment) __attribute__((aligned(alignment)))
+#endif
+
 #if defined(CONFIG_MUTEX_USE_STL)
 #include <mutex>
 #elif defined(CONFIG_MUTEX_USE_PTHREAD)
@@ -34,7 +53,7 @@ typedef struct {
     // 필드 추가 가능
 } Reply;
 
-typedef struct node_t {
+typedef QUEUE_ALIGN(CACHE_SIZE) struct node_t {
     Item item;
     struct node_t* next;
     // 필드 추가 가능
@@ -42,7 +61,7 @@ typedef struct node_t {
     std::size_t block_idx;
 } Node;
 
-typedef struct {
+typedef QUEUE_ALIGN(CACHE_SIZE) struct {
     Node* head, * tail;
     // 필드 추가 가능
 #if defined(CONFIG_MUTEX_USE_STL)
