@@ -177,16 +177,28 @@ Queue* init(void) {
 		is_inited = true;
 	}
 #endif
-	return new Queue { .head = nullptr, .tail = nullptr };
+
+	auto queue = reinterpret_cast<Queue*>(internal_malloc(sizeof(Queue)));
+
+	if (queue == nullptr)
+		return nullptr;
+
+	return new (queue) Queue { .head = nullptr, .tail = nullptr };
 }
 
 void release(Queue* queue) {
-	if (queue != nullptr)
-		delete queue;
+	if (queue != nullptr) {
+		queue->~Queue();
+		internal_free(queue);
+	}
 }
 
 Node* nalloc(Item item) {
 	auto node = reinterpret_cast<Node*>(internal_malloc(sizeof(Node)));
+
+	if (node == nullptr)
+		return nullptr;
+
 	*node = { .item = item, .next = nullptr };
 
 	return node;
