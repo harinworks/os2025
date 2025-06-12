@@ -10,22 +10,28 @@
 #define CONFIG_BLOCK_LEN 64
 #define CONFIG_MALLOC_ALIGNED y
 
-// #define CONFIG_MUTEX_USE_STL y
+#define CONFIG_MUTEX_USE_STL y
 // #define CONFIG_MUTEX_USE_PTHREAD y
-#define CONFIG_MUTEX_USE_SPINLOCK y
+// #define CONFIG_MUTEX_USE_WINAPI y
+// #define CONFIG_MUTEX_USE_SPINLOCK y
 
-#if defined(__i386__)
-#define PAGE_SIZE 4096
-#define CACHE_SIZE 32
-#elif defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_X64)
+#define CONFIG_ENV_64BIT 1
+#endif
+
+#if defined(_WIN32)
+#define CONFIG_ENV_WIN32 1
+#endif
+
+#if defined(CONFIG_ENV_64BIT)
 #define PAGE_SIZE 4096
 #define CACHE_SIZE 64
 #else
-#define PAGE_SIZE 1
-#define CACHE_SIZE 1
+#define PAGE_SIZE 4096
+#define CACHE_SIZE 32
 #endif
 
-#ifdef _WIN32
+#if defined(CONFIG_ENV_WIN32)
 #define QUEUE_INLINE __forceinline
 #define QUEUE_ALIGN(alignment) __declspec(align(alignment))
 #else
@@ -37,6 +43,8 @@
 #include <mutex>
 #elif defined(CONFIG_MUTEX_USE_PTHREAD)
 #include <pthread.h>
+#elif defined(CONFIG_MUTEX_USE_WINAPI)
+#include <Windows.h>
 #endif
 
 typedef unsigned int Key;  // 값이 클수록 높은 우선순위
@@ -68,6 +76,8 @@ typedef QUEUE_ALIGN(CACHE_SIZE) struct {
     std::mutex mutex;
 #elif defined(CONFIG_MUTEX_USE_PTHREAD)
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+#elif defined(CONFIG_MUTEX_USE_WINAPI)
+    CRITICAL_SECTION mutex;
 #elif defined(CONFIG_MUTEX_USE_SPINLOCK)
     volatile void* lock = nullptr;
 #endif

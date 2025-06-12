@@ -1,9 +1,10 @@
 #include <iostream>
 #include <cstdlib>
+#include "qtype.h"
 #include "queue.h"
 
 #if defined(CONFIG_HACK)
-#if _WIN32
+#if defined(CONFIG_ENV_WIN32)
 #pragma optimize("gt", on)
 #pragma optimize("", on)
 #pragma inline_depth(255)
@@ -13,7 +14,6 @@
 #pragma check_stack(off)
 #pragma strict_gs_check(off)
 
-#pragma loop_opt(on)
 #pragma unroll(16)
 
 #pragma auto_inline(on)
@@ -36,7 +36,7 @@ static QUEUE_INLINE void internal_hack() {}
 #define __BIONIC_ALIGN(__value, __alignment) (((__value) + (__alignment) - 1) & ~((__alignment) - 1))
 #endif
 
-#ifdef _WIN32
+#if defined(CONFIG_ENV_WIN32)
 static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	if (size >= PAGE_SIZE)
         return _aligned_malloc(__BIONIC_ALIGN(size, PAGE_SIZE), PAGE_SIZE);
@@ -102,28 +102,44 @@ static QUEUE_INLINE void internal_lock(Queue* queue) {
 static QUEUE_INLINE void internal_unlock(Queue* queue) {
 	pthread_mutex_unlock(&queue->mutex);
 }
+#elif defined(CONFIG_MUTEX_USE_WINAPI)
+#include <Windows.h>
+
+static QUEUE_INLINE void internal_lock(Queue* queue) {
+    EnterCriticalSection(&queue->mutex);
+}
+
+static QUEUE_INLINE void internal_unlock(Queue* queue) {
+    LeaveCriticalSection(&queue->mutex);
+}
 #elif defined(CONFIG_MUTEX_USE_SPINLOCK)
 // https://wiki.osdev.org/Spinlock
 
-#if defined(__i386__) || defined(__x86_64__)
-#ifdef _WIN32
+#if defined(CONFIG_ENV_WIN32)
+// MSVC's inline ASM statement is not as good as GCC/Clang, so it might not work for Windows...
+// It will cause compile or memory errors...
+
 static QUEUE_INLINE void internal_lock(Queue* queue) {
+	volatile auto lock_ptr = queue->lock;
+
     __asm {
-    lock:
-        lock bts dword ptr [queue->lock], 0
+    acquire:
+        lock bts dword ptr [lock_ptr], 0
         jnc exit
     spin:
         pause
-        test dword ptr [queue->lock], 1
+        test dword ptr [lock_ptr], 1
         jnz spin
-        jmp lock
+        jmp acquire
     exit:
     }
 }
 
 static QUEUE_INLINE void internal_unlock(Queue* queue) {
+	volatile auto lock_ptr = queue->lock;
+
     __asm {
-        mov dword ptr [queue->lock], 0
+        mov dword ptr [lock_ptr], 0
     }
 }
 #else
@@ -154,16 +170,6 @@ static QUEUE_INLINE void internal_unlock(Queue* queue) {
 }
 #endif
 #else
-static QUEUE_INLINE void internal_lock(Queue* queue) {
-	while (&queue->lock != 0);
-	queue->lock = 1;
-}
-
-static QUEUE_INLINE void internal_unlock(Queue* queue) {
-	queue->lock = 0;
-}
-#endif
-#else
 static QUEUE_INLINE void internal_lock(Queue* queue) {}
 static QUEUE_INLINE void internal_unlock(Queue* queue) {}
 #endif
@@ -183,14 +189,25 @@ Queue* init(void) {
 	if (queue == nullptr)
 		return nullptr;
 
-	return new (queue) Queue { .head = nullptr, .tail = nullptr };
+	new (queue) Queue { nullptr, nullptr };
+
+#if defined(CONFIG_MUTEX_USE_WINAPI)
+	InitializeCriticalSection(&queue->mutex);
+#endif
+
+	return queue;
 }
 
 void release(Queue* queue) {
-	if (queue != nullptr) {
-		queue->~Queue();
-		internal_free(queue);
-	}
+	if (queue == nullptr)
+		return;
+
+	#if defined(CONFIG_MUTEX_USE_WINAPI)
+		DeleteCriticalSection(&queue->mutex);
+	#endif
+
+	queue->~Queue();
+	internal_free(queue);
 }
 
 Node* nalloc(Item item) {
@@ -199,7 +216,7 @@ Node* nalloc(Item item) {
 	if (node == nullptr)
 		return nullptr;
 
-	*node = { .item = item, .next = nullptr };
+	*node = { item, nullptr, nullptr, 0 };
 
 	return node;
 }
@@ -248,7 +265,7 @@ Reply enqueue(Queue* queue, Item item) {
 	}
 
 	auto new_node = &reinterpret_cast<Node*>(block_root)[block_idx];
-	*new_node = { .item = item, .next = nullptr, .block_root = block_root, .block_idx = block_idx };
+	*new_node = { item, nullptr, block_root, block_idx };
 
 	if (queue->head == nullptr) {
 		queue->head = new_node;
