@@ -44,6 +44,10 @@ static QUEUE_INLINE void internal_hack() {}
 #endif
 
 #if defined(CONFIG_ENV_WIN32)
+#include <intrin.h>
+
+#define INTERNAL_PREFETCH(ptr, locality) _mm_prefetch(reinterpret_cast<const char*>(ptr), (locality))
+
 static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	if (size >= PAGE_SIZE)
         return _aligned_malloc(__BIONIC_ALIGN(size, PAGE_SIZE), PAGE_SIZE);
@@ -56,6 +60,8 @@ static QUEUE_INLINE void internal_free(void* ptr) {
 }
 #else
 #include <sys/mman.h>
+
+#define INTERNAL_PREFETCH(ptr, locality) __builtin_prefetch((ptr), 0, (locality))
 
 static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 	void* ptr;
@@ -310,6 +316,11 @@ Reply dequeue(Queue* queue) {
 	if (queue->head == nullptr)
 		queue->tail = nullptr;
 
+	internal_free(node->item.value);
+
+	if (node->next != nullptr)
+		INTERNAL_PREFETCH(node->next, 2);
+
 	if (node->block_root != nullptr && (node->next == nullptr || node->next->block_root != node->block_root))
 		internal_free(node->block_root);
 
@@ -332,7 +343,12 @@ Queue* range(Queue* queue, Key start, Key end) {
 	internal_lock(queue);
 
 	for (auto node = queue->head; node != nullptr; node = node->next) {
-		if (node->item.key >= start && node->item.key <= end) {
+		if (node->next != nullptr)
+			INTERNAL_PREFETCH(node->next, 2);
+
+		auto key = node->item.key;
+
+		if (key >= start && key <= end) {
 			if (!enqueue(new_queue, node->item).success) {
 				internal_unlock(queue);
 				release(new_queue);
