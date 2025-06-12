@@ -7,16 +7,23 @@
 #if defined(CONFIG_ENV_WIN32)
 #pragma optimize("gt", on)
 #pragma optimize("", on)
-#pragma inline_depth(255)
-#pragma inline_recursion(on)
+#pragma optimize("s", on)
+#pragma optimize("y", on)
+#pragma optimize("a", on)
 
+#pragma strict_gs_check(off)
 #pragma runtime_checks("", off)
 #pragma check_stack(off)
-#pragma strict_gs_check(off)
+#pragma vtordisp(off)
 
-#pragma unroll(16)
-
+#pragma inline_recursion(on)
+#pragma inline_depth(255)
 #pragma auto_inline(on)
+
+#pragma check_stack(off)
+#pragma strict_gs_check(off)
+#pragma detect_mismatch("","")
+#pragma optimize("tg",on)
 
 #include <Windows.h>
 #include <Processthreadsapi.h>
