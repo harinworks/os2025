@@ -53,6 +53,7 @@ typedef void* Value;
 typedef struct {
     Key key;
     Value value;
+    int value_size;
 } Item;
 
 typedef struct {
@@ -64,6 +65,8 @@ typedef struct {
 typedef QUEUE_ALIGN(CACHE_SIZE) struct node_t {
     Item item;
     struct node_t* next;
+    struct node_t* tree_left;
+    struct node_t* tree_right;
     // 필드 추가 가능
     void *block_root;
     std::size_t block_idx;
@@ -71,6 +74,7 @@ typedef QUEUE_ALIGN(CACHE_SIZE) struct node_t {
 
 typedef QUEUE_ALIGN(CACHE_SIZE) struct {
     Node* head, * tail;
+    Node* tree_root;
     // 필드 추가 가능
 #if defined(CONFIG_MUTEX_USE_STL)
     std::mutex mutex;

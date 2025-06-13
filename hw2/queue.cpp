@@ -187,6 +187,35 @@ static QUEUE_INLINE void internal_lock(Queue* queue) {}
 static QUEUE_INLINE void internal_unlock(Queue* queue) {}
 #endif
 
+static Node** find_tree_node(Queue* queue, const Item& item, bool is_overwrite = false) {
+	auto node_ptr = &queue->tree_root;
+
+	while (*node_ptr != nullptr) {
+		auto node = *node_ptr;
+		auto& node_item = node->item;
+
+		if (node->tree_left != nullptr)
+			INTERNAL_PREFETCH(node->tree_left, 1);
+		if (node->tree_right != nullptr)
+			INTERNAL_PREFETCH(node->tree_right, 1);
+
+		if (item.key < node_item.key) {
+			node_ptr = &node->tree_left;
+		} else if (item.key > node_item.key) {
+			node_ptr = &node->tree_right;
+		} else if (is_overwrite) {
+			node_item.value = item.value;
+			node_item.value_size = item.value_size;
+
+			return nullptr;
+		} else {
+			break;
+		}
+	}
+
+	return node_ptr;
+}
+
 Queue* init(void) {
 #if defined(CONFIG_HACK)
 	static auto is_inited = false;
@@ -202,7 +231,7 @@ Queue* init(void) {
 	if (queue == nullptr)
 		return nullptr;
 
-	new (queue) Queue { nullptr, nullptr };
+	new (queue) Queue { nullptr, nullptr, nullptr };
 
 #if defined(CONFIG_MUTEX_USE_WINAPI)
 	InitializeCriticalSection(&queue->mutex);
@@ -261,6 +290,15 @@ Reply enqueue(Queue* queue, Item item) {
 
 	internal_lock(queue);
 
+	auto tree_node_ptr = find_tree_node(queue, item, true);
+
+	if (tree_node_ptr == nullptr) {
+		// Existing node item has been overwrited
+		internal_unlock(queue);
+		reply.success = true;
+		return reply;
+	}
+
 	auto node = queue->tail;
 
 	auto block_idx = node != nullptr && node->block_idx < CONFIG_BLOCK_LEN - 1
@@ -278,7 +316,7 @@ Reply enqueue(Queue* queue, Item item) {
 	}
 
 	auto new_node = &reinterpret_cast<Node*>(block_root)[block_idx];
-	*new_node = { item, nullptr, block_root, block_idx };
+	*new_node = { item, nullptr, nullptr, nullptr, block_root, block_idx };
 
 	if (queue->head == nullptr) {
 		queue->head = new_node;
@@ -287,6 +325,8 @@ Reply enqueue(Queue* queue, Item item) {
 		node->next = new_node;
 		queue->tail = new_node;
 	}
+
+	(*tree_node_ptr) = new_node;
 
 	internal_unlock(queue);
 
@@ -312,6 +352,24 @@ Reply dequeue(Queue* queue) {
 
 	reply.item = node->item;
 	queue->head = node->next;
+
+	auto tree_node_ptr = find_tree_node(queue, node->item);
+
+	// Prune tree nodes
+	if (*tree_node_ptr != nullptr) {
+		auto left_node = (*tree_node_ptr)->tree_left;
+		auto right_node = (*tree_node_ptr)->tree_right;
+
+		if (left_node != nullptr) {
+			*tree_node_ptr = left_node;
+			left_node->tree_right = right_node;
+		} else if (right_node != nullptr) {
+			*tree_node_ptr = right_node;
+			right_node->tree_left = left_node;
+		} else {
+			*tree_node_ptr = nullptr;
+		}
+	}
 
 	if (queue->head == nullptr)
 		queue->tail = nullptr;
