@@ -1,5 +1,6 @@
 #include <iostream>
 #include <cstdlib>
+#include <cstring>
 #include "qtype.h"
 #include "queue.h"
 
@@ -204,6 +205,9 @@ static Node** find_tree_node(Queue* queue, const Item& item, bool is_overwrite =
 		} else if (item.key > node_item.key) {
 			node_ptr = &node->tree_right;
 		} else if (is_overwrite) {
+			internal_free(node_item.value);
+
+			// New memory was already ready, do not deep copy on here
 			node_item.value = item.value;
 			node_item.value_size = item.value_size;
 
@@ -288,6 +292,11 @@ Reply enqueue(Queue* queue, Item item) {
 	if (queue == nullptr)
 		return reply;
 
+	item.value = internal_malloc(item.value_size);	// Only for internal use
+
+	if (item.value != nullptr && reply.item.value != nullptr)
+		std::memcpy(item.value, reply.item.value, item.value_size);
+
 	internal_lock(queue);
 
 	auto tree_node_ptr = find_tree_node(queue, item, true);
@@ -312,6 +321,7 @@ Reply enqueue(Queue* queue, Item item) {
 
 	if (block_root == nullptr) {
 		internal_unlock(queue);
+		internal_free(item.value);
 		return reply;
 	}
 
@@ -350,7 +360,13 @@ Reply dequeue(Queue* queue) {
 
 	auto node = queue->head;
 
-	reply.item = node->item;
+	reply.item.key = node->item.key;
+	reply.item.value_size = node->item.value_size;
+	reply.item.value = std::malloc(reply.item.value_size);	// Not for internal use
+	
+	if (reply.item.value != nullptr && node->item.value != nullptr)
+		std::memcpy(reply.item.value, node->item.value, reply.item.value_size);
+
 	queue->head = node->next;
 
 	auto tree_node_ptr = find_tree_node(queue, node->item);
