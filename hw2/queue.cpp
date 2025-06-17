@@ -83,7 +83,7 @@ static QUEUE_INLINE void* internal_malloc(std::size_t size) {
 }
 
 static QUEUE_INLINE void internal_free(void* ptr) {
-	free(ptr);
+	std::free(ptr);
 }
 #endif
 #else
@@ -248,9 +248,9 @@ void release(Queue* queue) {
 	if (queue == nullptr)
 		return;
 
-	#if defined(CONFIG_MUTEX_USE_WINAPI)
+#if defined(CONFIG_MUTEX_USE_WINAPI)
 		DeleteCriticalSection(&queue->mutex);
-	#endif
+#endif
 
 	queue->~Queue();
 	internal_free(queue);
@@ -302,7 +302,7 @@ Reply enqueue(Queue* queue, Item item) {
 	auto tree_node_ptr = find_tree_node(queue, item, true);
 
 	if (tree_node_ptr == nullptr) {
-		// Existing node item has been overwrited
+		// Existing node item has been overwritten
 		internal_unlock(queue);
 		reply.success = true;
 		return reply;
